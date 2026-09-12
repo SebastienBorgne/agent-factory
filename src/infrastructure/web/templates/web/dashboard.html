@@ -1,0 +1,24 @@
+{% extends "web/base.html" %}
+{% block title %}{{ project.name }} — Agent Factory{% endblock %}
+{% block content %}
+  <p><a href="{% url 'builder' %}">&larr; back to builder</a></p>
+  <h2>{{ project.name }}</h2>
+  <p>{{ project.brief }}</p>
+  <p><code>{{ project.output_path }}</code></p>
+
+  <div class="card">
+    <strong>Team:</strong>
+    {% for slug in team.member_role_slugs %}<span class="tag">{{ slug }}</span>{% endfor %}
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="start_run">
+    <button type="submit">Start run</button>
+  </form>
+
+  <h3>Tasks</h3>
+  <div id="tasks" hx-get="{% url 'dashboard_tasks' project.slug %}" hx-trigger="load, every 5s">
+    {% include "web/_tasks.html" with tracking=tracking run_log=run_logs.0 %}
+  </div>
+{% endblock %}

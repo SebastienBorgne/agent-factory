@@ -1,0 +1,208 @@
+"""Static string templates for files written into a generated project. Kept
+separate from scaffold_writer.py's file-tree-walking logic so the actual
+content is easy to review/edit in one place."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Sequence
+from datetime import UTC, datetime
+
+from domain.entities import AgentRole, Project
+
+
+def opencode_json(roles: Sequence[AgentRole] = ()) -> str:
+    subagent_slugs = [role.slug for role in roles if role.mode.value == "subagent"]
+    config = {
+        "$schema": "https://opencode.ai/config.json",
+        "instructions": ["AGENTS.md"],
+        "default_agent": "project-manager",
+        # Runs unattended via `opencode run` in the worker container, with
+        # nobody present to answer an "ask" prompt -- so every tool is
+        # allowed by default. `task` is what lets project-manager delegate
+        # to subagents at all; it's called out explicitly, not just implied
+        # by the blanket allow below, since that delegation is the whole
+        # point of this project. No `provider`/`model` overrides here — the
+        # team uses whatever model(s) the `opencode` CLI is itself configured
+        # with (`opencode auth login`), not a project-specific choice.
+        "permission": {
+            "read": "allow",
+            "edit": "allow",
+            "bash": "allow",
+            "task": "allow",
+            "external_directory": "allow",
+        },
+        "agent": {
+            "project-manager": {
+                "mode": "primary",
+                "permission": {"task": "allow"},
+            },
+            **{slug: {"mode": "subagent", "permission": {"task": "deny"}} for slug in subagent_slugs},
+        },
+    }
+    return json.dumps(config, indent=2) + "\n"
+
+
+def agents_md(project: Project, roles: Sequence[AgentRole]) -> str:
+    team_list = "\n".join(f"- **{role.name}** (`{role.slug}`) — {role.description}" for role in roles)
+    return f"""# {project.name}
+
+## Brief
+
+{project.brief}
+
+## Team
+
+{team_list}
+
+## Tech stack
+
+This brief may or may not specify a tech stack. If it doesn't, the first
+implementing agent (backend-dev or frontend-dev) should choose a sensible
+default for the problem at hand and record it here so the rest of the team
+stays consistent — do not let backend and frontend independently pick
+incompatible stacks.
+
+## How this team works
+
+- `tracking.json` is the single source of truth for tasks and their status.
+  The project-manager agent owns it and rewrites it at the end of every run.
+- The project-manager delegates work to subagents by role; it does not write
+  code itself.
+- Every agent updates the notes on its own assigned tasks in `tracking.json`
+  before finishing — status changes without notes make the project harder to
+  resume later.
+"""
+
+
+def tracking_json(project: Project, roles: Sequence[AgentRole]) -> str:
+    now = datetime.now(UTC).isoformat()
+    payload = {
+        "project": project.slug,
+        "created_at": now,
+        "updated_at": now,
+        "status": "planning",
+        "team": [role.slug for role in roles],
+        "tasks": [],
+    }
+    return json.dumps(payload, indent=2) + "\n"
+
+
+def agent_frontmatter_file(role: AgentRole) -> str:
+    # No `model:` field: the agent uses whichever model opencode.json /
+    # the user's global opencode config resolves to (see opencode_json()).
+    return (
+        "---\n"
+        f"description: {role.description}\n"
+        f"mode: {role.mode.value}\n"
+        "---\n\n"
+        f"{role.guidelines_md}"
+    )
+
+
+def skill_file(skill_slug: str, description: str, content_md: str) -> str:
+    return f"---\nname: {skill_slug}\ndescription: {description}\n---\n\n{content_md}"
+
+
+def env_example() -> str:
+    return """\
+# --- Infisical self-host ---
+ENCRYPTION_KEY=
+AUTH_SECRET=
+SITE_URL=http://localhost:8080
+DB_CONNECTION_URI=postgres://infisical:infisical@infisical-db:5432/infisical
+REDIS_URL=redis://infisical-redis:6379
+"""
+
+
+def docker_compose_yml() -> str:
+    return """\
+services:
+  infisical-db:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: infisical
+      POSTGRES_PASSWORD: infisical
+      POSTGRES_DB: infisical
+    volumes:
+      - infisical_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infisical"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  infisical-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - infisical_redis_data:/data
+
+  infisical-backend:
+    image: infisical/infisical:latest
+    restart: unless-stopped
+    depends_on:
+      infisical-db:
+        condition: service_healthy
+      infisical-redis:
+        condition: service_started
+    env_file: .env
+    ports:
+      - "8080:8080"
+
+volumes:
+  infisical_db_data:
+  infisical_redis_data:
+"""
+
+
+def readme_md(project: Project) -> str:
+    return f"""# {project.name}
+
+Generated by agent-factory. This folder is a self-contained OpenCode project:
+your agent team lives in `.opencode/agents/`, their shared knowledge in
+`.opencode/skills/`, and the project's live task board in `tracking.json`.
+
+## 1. Set up the model
+
+This team uses whatever model(s) the [OpenCode CLI](https://opencode.ai)
+itself is configured with — nothing here forces a specific provider. If you
+haven't already, run `opencode auth login` (or set the relevant provider API
+key) wherever you'll run `opencode run` from.
+
+## 2. (Optional) Secrets
+
+`docker compose up -d` brings up a self-hosted [Infisical](https://infisical.com)
+instance (+ its own Postgres/Redis) if this project needs a place to store
+secrets as it grows — copy `.env.example` to `.env` first. Not required just
+to run the team.
+
+## 3. Run the team
+
+```
+opencode run --agent project-manager "<describe what you want built>"
+```
+
+The project-manager agent reads `AGENTS.md` and `tracking.json`, breaks the
+brief into tasks, and delegates to `scrum-master`, `backend-dev`,
+`frontend-dev`, `qa`, and `devops` (whichever are on this team) via OpenCode's
+Task tool. Re-run the same command any time to resume — `tracking.json`
+carries state between runs.
+
+`opencode.json` grants every tool (`read`, `edit`, `bash`, `task`,
+`external_directory`) `allow` by default, since this runs unattended (e.g.
+from agent-factory's `worker` container) with nobody present to answer an
+"ask" prompt. `project-manager` is the only agent allowed to use `task`
+(delegate to another agent) — subagents can't delegate further. Tighten
+`opencode.json`'s `permission` block if you're running this interactively
+and want approval prompts back.
+
+## 4. Where things live
+
+- `AGENTS.md` — the project brief and team roster.
+- `tracking.json` — the task board; the project-manager keeps it current.
+- `.opencode/agents/` — one system prompt per team member.
+- `.opencode/skills/` — reference material each agent can load on demand.
+- `src/`, `tests/` — where the team's actual work goes.
+"""

@@ -1,0 +1,16 @@
+.git/
+.github/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.sqlite3
+.env
+.env.example
+generated_teams/
+.pre-commit-config.yaml
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.vscode/
+README.md
