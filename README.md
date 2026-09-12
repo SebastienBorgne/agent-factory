@@ -1,16 +1,65 @@
 # Agent Factory
 
-Pick a team of pre-configured AI agents (Project Manager, Scrum Master,
-Backend Dev, Frontend Dev, QA, DevOps), describe a project, and generate a
-self-contained [OpenCode](https://opencode.ai) project folder: real
-`.opencode/agents/` + `.opencode/skills/`, an optional Infisical stack for
-secrets, and a `tracking.json` task board the Project Manager agent keeps
-current across runs. Agents use whatever model(s) the `opencode` CLI is
-itself configured with — agent-factory doesn't force a provider.
+[![CI](https://github.com/SebastienBorgne/agent-factory/actions/workflows/ci.yml/badge.svg)](https://github.com/SebastienBorgne/agent-factory/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Django](https://img.shields.io/badge/django-5.x-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
-Agent-factory itself is Django + PostgreSQL + Kafka. That stack has nothing
-to do with what the *generated* agents build — `backend-dev`/`frontend-dev`
-pick (or follow) whatever stack a given project's brief calls for.
+**Pick an AI agent team, describe a project, and get back a real, runnable
+[OpenCode](https://opencode.ai) project — not a template, a working team.**
+
+Agent Factory is a Django web app for assembling agentic software teams.
+Pick from a catalog of predefined roles — Project Manager, Scrum Master,
+Backend Dev, Frontend Dev, QA, DevOps — each with its own pre-written
+guidelines and skills, describe what you want built, and generate a
+self-contained project folder with real `.opencode/agents/` +
+`.opencode/skills/`, an optional [Infisical](https://infisical.com) stack
+for secrets, and a `tracking.json` task board the Project Manager agent
+keeps current across runs.
+
+Agent-factory itself is Django + PostgreSQL + Kafka — that stack has nothing
+to do with what the *generated* agents build. `backend-dev`/`frontend-dev`
+pick (or follow) whatever stack a given project's brief calls for, and
+agents use whatever model(s) the `opencode` CLI is itself configured with;
+agent-factory doesn't force a provider.
+
+## Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Run it](#run-it)
+- [Develop without Docker](#develop-without-docker)
+- [Linting](#linting)
+- [Tests](#tests)
+- [CI/CD](#cicd)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+- **A real agent catalog, not a prompt template** — 6 predefined roles with
+  hand-written system prompts and 15 skills, seeded from plain markdown in
+  `agent_templates/` into the database.
+- **Generates a project OpenCode can actually run** — `opencode.json`,
+  `.opencode/agents/*.md`, `.opencode/skills/*/SKILL.md`, all wired so the
+  Project Manager delegates to the rest of the team via OpenCode's native
+  Task tool.
+- **`tracking.json` as the single source of truth** — the Project Manager
+  reads and rewrites it every run, so state survives across sessions.
+- **Stack-agnostic by design** — the generated backend/frontend/devops
+  agents follow whatever tech a project's brief specifies, or pick and
+  record a sensible default; agent-factory's own Django/Postgres/Kafka stack
+  is not imposed on generated projects.
+- **Hexagonal architecture** — the domain and use-case layers have zero
+  Django/Kafka/OpenCode-CLI imports; every external system is an adapter
+  behind a port.
+- **Async orchestration** — starting a run publishes a Kafka event; a
+  separate `worker` process picks it up and drives `opencode run`, so the
+  web request never blocks on a long-running agent session.
 
 ## Architecture
 
@@ -44,7 +93,7 @@ Postgres's own credentials), so there is exactly one source of truth. See
 
 ## Run it
 
-```
+```sh
 cp .env.example .env      # edit APP_RUN__SUPERUSER__PASSWORD etc. as you like
 docker compose up -d --build
 ```
@@ -74,10 +123,10 @@ the compose network. Either don't create `.env` at all for host-only work
 (falls back to sqlite automatically), or blank out `APP_RUN__DATABASE__HOST`
 in your copy.
 
-```
+```sh
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pre-commit install            # one-time: runs the hooks below on every commit
+pre-commit install --hook-type pre-commit --hook-type commit-msg   # one-time
 python manage.py migrate      # falls back to sqlite when APP_RUN__DATABASE__HOST isn't set
 python manage.py seed_catalog
 python manage.py runserver
@@ -86,17 +135,28 @@ python manage.py runserver
 ## Linting
 
 `.pre-commit-config.yaml` runs [ruff](https://docs.astral.sh/ruff/) (lint +
-format) and basic file hygiene checks (trailing whitespace, valid
-YAML/JSON, no merge-conflict markers, etc.) via `pre-commit`. Ruff's own
-config lives in `pyproject.toml`. Run it manually with:
+format), basic file hygiene checks (trailing whitespace, valid YAML/JSON, no
+merge-conflict markers, etc.), and [commitizen](https://commitizen-tools.github.io/commitizen/)
+(enforces [Conventional Commits](https://www.conventionalcommits.org/) on
+every commit message). Ruff's and commitizen's own config live in
+`pyproject.toml`. Run the file-content hooks manually with:
 
-```
+```sh
 pre-commit run --all-files
+```
+
+`pylint` (Django-aware, via `pylint-django`) and `mypy` (strict, scoped to
+`domain/`+`application/` — see the note in `pyproject.toml`'s `[tool.mypy]`)
+run in CI rather than pre-commit, since they're slower:
+
+```sh
+PYTHONPATH=src DJANGO_SETTINGS_MODULE=config.settings pylint src
+mypy
 ```
 
 ## Tests
 
-```
+```sh
 python manage.py test                            # host, sqlite (no .env, or blank DATABASE__HOST)
 docker compose exec web python manage.py test     # against the real stack, whenever .env is docker-configured
 ```
@@ -130,3 +190,20 @@ jobs use `ignore-unfixed: true` (only fail on CVEs that actually have a
 patch available) and upload SARIF to the repo's Security tab. Everything
 here runs the same tools you can run locally (`pre-commit run --all-files`,
 `pytest`, `mypy`, `pylint src`) — CI should never surprise you.
+
+## Contributing
+
+1. Fork and clone, then follow [Develop without Docker](#develop-without-docker)
+   to get a working environment.
+2. Make your change, with tests — `pytest` should stay green and
+   `pre-commit run --all-files` clean.
+3. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
+   (`feat:`, `fix:`, `docs:`, `refactor:`, ...) — enforced by the
+   `commit-msg` hook once you've run `pre-commit install --hook-type commit-msg`.
+   `cz commit` will walk you through it interactively if you'd rather not
+   remember the format.
+4. Open a PR — the [CI pipeline](#cicd) runs automatically.
+
+## License
+
+[MIT](LICENSE) © Sebastien Borgne
