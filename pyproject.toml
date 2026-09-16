@@ -1,6 +1,6 @@
 [project]
 name = "agent-factory"
-version = "0.1.0"
+version = "1.0.0"
 description = "Pick an AI agent team, describe a project, generate a self-contained OpenCode project folder."
 readme = "README.md"
 requires-python = ">=3.12"
