@@ -67,14 +67,16 @@ def dashboard(request, slug):
         )
         return redirect("dashboard", slug=slug)
 
+    role_repo = container.agent_role_repo()
     team = container.team_repo().get_for_project(slug)
+    roles = [role_repo.get(role_slug) for role_slug in team.member_role_slugs]
     tracking = _read_tracking(project_row.output_path)
     run_logs = RunLogModel.objects.filter(project=project_row)[:10]
 
     return render(
         request,
         "web/dashboard.html",
-        {"project": project_row, "team": team, "tracking": tracking, "run_logs": run_logs},
+        {"project": project_row, "roles": roles, "tracking": tracking, "run_logs": run_logs},
     )
 
 

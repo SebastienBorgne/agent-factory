@@ -1,27 +1,33 @@
-{% if run_log %}
-  <p>Latest run: <span class="status status-{{ run_log.status }}">{{ run_log.status }}</span></p>
+{% if run_log or tracking %}
+  <div class="meta-row" style="margin-bottom: 16px;">
+    {% if tracking %}
+      <span class="pill pill-{{ tracking.status }}">{{ tracking.status }}</span>
+      <span>updated {{ tracking.updated_at }}</span>
+    {% endif %}
+    {% if run_log %}
+      <span>&middot; latest run: <span class="pill pill-{{ run_log.status }}">{{ run_log.status }}</span></span>
+    {% endif %}
+  </div>
 {% endif %}
 
 {% if not tracking %}
-  <p><em>No tracking.json yet — start a run to have the project-manager create one.</em></p>
+  <p class="empty-state">No tracking.json yet — start a run to have the project-manager create one.</p>
+{% elif tracking.tasks %}
+  <table>
+    <thead><tr><th>Task</th><th>Assigned to</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for task in tracking.tasks %}
+        <tr>
+          <td>
+            <div class="task-title">{{ task.title }}</div>
+            <div class="task-id">{{ task.id }}</div>
+          </td>
+          <td>{{ task.assigned_to }}</td>
+          <td><span class="pill pill-{{ task.status }}">{{ task.status }}</span></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 {% else %}
-  <p>Overall status: <span class="status status-{{ tracking.status }}">{{ tracking.status }}</span>
-     &middot; updated {{ tracking.updated_at }}</p>
-  {% if tracking.tasks %}
-    <table>
-      <thead><tr><th>ID</th><th>Title</th><th>Assigned to</th><th>Status</th></tr></thead>
-      <tbody>
-        {% for task in tracking.tasks %}
-          <tr>
-            <td>{{ task.id }}</td>
-            <td>{{ task.title }}</td>
-            <td>{{ task.assigned_to }}</td>
-            <td><span class="status status-{{ task.status }}">{{ task.status }}</span></td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p><em>No tasks yet.</em></p>
-  {% endif %}
+  <p class="empty-state">No tasks yet.</p>
 {% endif %}

@@ -1,35 +1,60 @@
 {% extends "web/base.html" %}
 {% block title %}Build a team — Agent Factory{% endblock %}
 {% block content %}
-  <p>Pick the agents for your team, describe the project, and generate a self-contained OpenCode project folder.</p>
+  <div class="hero">
+    <h1>Build your team.</h1>
+    <p>Pick the agents, describe the work, generate a project OpenCode can run.</p>
+  </div>
 
-  <form method="post">
+  <form method="post" novalidate>
     {% csrf_token %}
-    {{ form.non_field_errors }}
 
-    <label for="{{ form.project_name.id_for_label }}">{{ form.project_name.label }}</label>
-    {{ form.project_name }}
-    {{ form.project_name.errors }}
+    {% if form.non_field_errors %}
+      <div class="form-error-banner">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
 
-    <label for="{{ form.brief.id_for_label }}">{{ form.brief.label }}</label>
-    {{ form.brief }}
-    <small>{{ form.brief.help_text }}</small>
-    {{ form.brief.errors }}
+    <div class="section">
+      <div class="section-head">
+        <span class="eyebrow">Project</span>
+        <h2>What are you building?</h2>
+      </div>
 
-    <label>{{ form.roles.label }}</label>
-    {{ form.roles.errors }}
-    <div class="grid">
-      {% for role in roles %}
-        <div class="card">
-          <label style="margin:0;">
-            <input type="checkbox" name="roles" value="{{ role.slug }}"> {{ role.name }}
-          </label>
-          <p style="font-size:0.85rem;">{{ role.description }}</p>
-          {% for skill in role.skills %}<span class="tag">{{ skill.name }}</span>{% endfor %}
-        </div>
-      {% endfor %}
+      <div class="field">
+        <label for="{{ form.project_name.id_for_label }}">{{ form.project_name.label }}</label>
+        {{ form.project_name }}
+        {{ form.project_name.errors }}
+      </div>
+
+      <div class="field" style="margin-bottom: 0;">
+        <label for="{{ form.brief.id_for_label }}">{{ form.brief.label }}</label>
+        {{ form.brief }}
+        {{ form.brief.errors }}
+      </div>
     </div>
 
-    <p><button type="submit">Generate team</button></p>
+    <div class="section">
+      <div class="section-head">
+        <span class="eyebrow">Team</span>
+        <h2>Who's on it?</h2>
+      </div>
+      {{ form.roles.errors }}
+
+      <div class="role-grid">
+        {% for role in roles %}
+          <label class="role-card">
+            <input type="checkbox" name="roles" value="{{ role.slug }}">
+            <span class="role-name">{{ role.name }}</span>
+            <p class="role-description">{{ role.description }}</p>
+            {% if role.skills %}
+              <div class="tag-row">
+                {% for skill in role.skills %}<span class="tag">{{ skill.name }}</span>{% endfor %}
+              </div>
+            {% endif %}
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-block">Generate team</button>
   </form>
 {% endblock %}
